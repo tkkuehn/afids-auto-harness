@@ -1,0 +1,53 @@
+import random
+
+from snakebids import bids, generate_inputs
+
+
+configfile: "config/config.yaml"
+
+
+inputs = generate_inputs(
+    bids_dir=config["bids_dir"],
+    pybids_inputs=config["pybids_inputs"],
+    use_bids_inputs=True,
+)
+
+
+checkpoint split_inputs:
+    input:
+        input_images=expand(
+            inputs["t1w"].input_path, zip, **inputs["t1w"].input_zip_lists
+        ),
+    params:
+        seed=config.get("seed", 0),
+        train_proportion=config.get("train_proportion", 0.7),
+    output:
+        training_data=directory("output/train"),
+        testing_data=directory("output/test"),
+    script:
+        "scripts/split_data.py"
+
+
+def aggregate_input(wildcards):
+    split_output = checkpoints.split_inputs.get(**wildcards).output
+    train_dir = split_output["training_data"]
+    train_inputs = generate_inputs(bids_dir=train_dir, pybids_inputs=config["pybids_inputs"], use_bids_inputs=True)
+    return expand(train_inputs["t1w"].input_path, zip, **train_inputs["t1w"].input_zip_lists)
+
+
+rule train_model:
+    input:
+        training_data=aggregate_input,
+    output:
+        model=bids(
+            root="output/models/auto-afids-train",
+            suffix="model.rf",
+            space="MNI152NLin2009cAsym",
+        ),
+    params:
+        input_dir="output/train",
+        model_dir="output/models"
+    container:
+        "docker://tristankk/afids-auto-train:latest"
+    shell:
+        "/opt/afids-auto-train/run.py {params.input_dir} {params.model_dir} participant --cores --force-output"

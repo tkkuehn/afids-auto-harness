@@ -1,0 +1,20 @@
+bids_dir: '/home/tkuehn/Code/ds004253'
+output_dir: '/home/tkuehn/Code/afids-auto-output'
+
+# this configures the pybids grabber - create an entry for each type of input 
+# you want to grab indexed by name of input dictionary for each input is 
+# passed directly to pybids get()
+# https://bids-standard.github.io/pybids/generated/bids.layout.BIDSLayout.html#bids.layout.BIDSLayout.get
+pybids_inputs:
+  t1w:
+    filters:
+      suffix: T1w
+      extension: .nii.gz
+      datatype: anat
+    wildcards:
+    - subject
+    - session
+    - acquisition
+    - task
+
+train_proportion: 0.7
