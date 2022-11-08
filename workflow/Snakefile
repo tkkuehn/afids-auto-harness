@@ -1,3 +1,4 @@
+from functools import partial
 from pathlib import Path
 import random
 
@@ -42,12 +43,14 @@ checkpoint split_inputs:
         "scripts/split_data.py"
 
 
-def aggregate_input(wildcards):
+def subset_inputs(wildcards, output_name):
     split_output = checkpoints.split_inputs.get(**wildcards).output
-    train_dir = split_output["training_data"]
-    train_inputs = generate_inputs(
-        bids_dir=train_dir, pybids_inputs=config["pybids_inputs"], use_bids_inputs=True
-    )
+    subset_dir = split_output[output_name]
+    return generate_inputs(bids_dir=subset_dir, pybids_inputs=config["pybids_inputs"], use_bids_inputs=True)
+
+
+def aggregate_input(wildcards, output_name):
+    train_inputs = subset_inputs(wildcards, output_name)
     return expand(
         train_inputs["t1w"].input_path, zip, **train_inputs["t1w"].input_zip_lists
     )
@@ -55,7 +58,7 @@ def aggregate_input(wildcards):
 
 rule train_model:
     input:
-        training_data=aggregate_input,
+        training_data=partial(aggregate_input, output_name="training_data"),
     output:
         model=bids(
             root="output/models/auto-afids-train",
@@ -69,3 +72,35 @@ rule train_model:
         "docker://tristankk/afids-auto-train:latest"
     shell:
         "/opt/afids-auto-train/run.py {params.input_dir} {params.model_dir} participant --cores --force-output"
+
+
+checkpoint apply_model:
+    input:
+        testing_data=partial(aggregate_input, output_name="testing_data"),
+        model=rules.train_model.output["model"],
+    params:
+        model_dir="output/models",
+        test_dir="output/test",
+        out_dir="output/afids",
+    output:
+        out_dir=directory("output/afids/threshold_prob"),
+    container:
+        "docker://tristankk/afids-auto-apply:latest"
+    shell:
+        "/opt/afids-auto-apply/run.py {params.test_dir} {params.out_dir} participant --model_dir {params.model_dir} --cores"
+
+
+def aggregate_all_inputs(wildcards):
+    split_output = checkpoints.split_inputs.get(**wildcards).output
+    afids_output = checkpoints.apply_model.get(**wildcards).output["out_dir"]
+    custom_inputs = dict(config["pybids_inputs"]["t1w"], filters={"datatype": "anat", "res": "1mm", "suffix": "probs", "extension": ".nii.gz"})
+    afids_inputs =  generate_inputs(bids_dir=afids_output, pybids_inputs={"probs": custom_inputs}, use_bids_inputs=True)
+    return expand(
+        afids_inputs["probs"].input_path, zip, **afids_inputs["probs"].input_zip_lists
+    )
+
+
+rule all:
+    input:
+        aggregate_all_inputs
+    default_target: True
