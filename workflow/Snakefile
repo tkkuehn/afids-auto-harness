@@ -86,15 +86,17 @@ checkpoint apply_model:
         out_dir=directory("output/afids/threshold_prob"),
     container:
         "docker://tristankk/afids-auto-apply:latest"
+    resources:
+        cores=workflow.cores
     shell:
-        "/opt/afids-auto-apply/run.py {params.test_dir} {params.out_dir} participant --model_dir {params.model_dir} --cores"
+        "/opt/afids-auto-apply/run.py {params.test_dir} {params.out_dir} participant --model_dir {params.model_dir} --cores {resources.cores}"
 
 
 def aggregate_all_inputs(wildcards):
     split_output = checkpoints.split_inputs.get(**wildcards).output
     afids_output = checkpoints.apply_model.get(**wildcards).output["out_dir"]
     custom_inputs = dict(config["pybids_inputs"]["t1w"], filters={"datatype": "anat", "res": "1mm", "suffix": "probs", "extension": ".nii.gz"})
-    afids_inputs =  generate_inputs(bids_dir=afids_output, pybids_inputs={"probs": custom_inputs}, use_bids_inputs=True)
+    afids_inputs =  generate_inputs(bids_dir=afids_output, pybids_inputs={"probs": custom_inputs}, use_bids_inputs=True, pybids_config=["bids","derivatives"])
     return expand(
         afids_inputs["probs"].input_path, zip, **afids_inputs["probs"].input_zip_lists
     )
