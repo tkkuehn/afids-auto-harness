@@ -28,7 +28,7 @@ checkpoint split_inputs:
                 desc="groundtruth",
                 suffix="afids.fcsv",
                 space="T1w",
-                **inputs.subj_wildcards
+                **inputs["t1w"].input_wildcards
             ),
             zip,
             **inputs["t1w"].input_zip_lists
@@ -46,7 +46,9 @@ checkpoint split_inputs:
 def subset_inputs(wildcards, output_name):
     split_output = checkpoints.split_inputs.get(**wildcards).output
     subset_dir = split_output[output_name]
-    return generate_inputs(bids_dir=subset_dir, pybids_inputs=config["pybids_inputs"], use_bids_inputs=True)
+    return generate_inputs(
+        bids_dir=subset_dir, pybids_inputs=config["pybids_inputs"], use_bids_inputs=True
+    )
 
 
 def aggregate_input(wildcards, output_name):
@@ -87,22 +89,44 @@ checkpoint apply_model:
     container:
         "docker://tristankk/afids-auto-apply:latest"
     resources:
-        cores=workflow.cores
+        cores=workflow.cores,
     shell:
         "/opt/afids-auto-apply/run.py {params.test_dir} {params.out_dir} participant --model_dir {params.model_dir} --cores {resources.cores}"
 
 
+rule afle:
+    input:
+        ground_truth_fcsv=bids(
+            root=str(Path("output") / "test" / "derivatives" / "afids_groundtruth"),
+            desc="groundtruth",
+            suffix="afids.fcsv",
+            space="T1w",
+            **inputs["t1w"].input_wildcards,
+        ),
+        model_fcsv=bids(
+            root=str(Path("output") / "afids" / "threshold_prob"),
+            datatype="anat",
+            space="MNI152NLin2009cAsym",
+            suffix="afids.fcsv",
+            **inputs["t1w"].input_wildcards,
+        ),
+    output:
+        afle=bids(
+            root=str(Path("output") / "afles"),
+            datatype="anat",
+            suffix="afles.json",
+            **inputs["t1w"].input_wildcards,
+        ),
+    script:
+        "scripts/calc_afle.py"
+
+
 def aggregate_all_inputs(wildcards):
-    split_output = checkpoints.split_inputs.get(**wildcards).output
-    afids_output = checkpoints.apply_model.get(**wildcards).output["out_dir"]
-    custom_inputs = dict(config["pybids_inputs"]["t1w"], filters={"datatype": "anat", "res": "1mm", "suffix": "probs", "extension": ".nii.gz"})
-    afids_inputs =  generate_inputs(bids_dir=afids_output, pybids_inputs={"probs": custom_inputs}, use_bids_inputs=True, pybids_config=["bids","derivatives"])
-    return expand(
-        afids_inputs["probs"].input_path, zip, **afids_inputs["probs"].input_zip_lists
-    )
+    test_inputs = subset_inputs(wildcards, "testing_data")
+    return expand(rules.afle.output["afle"], zip, **test_inputs["t1w"].input_zip_lists)
 
 
 rule all:
     input:
-        aggregate_all_inputs
+        aggregate_all_inputs,
     default_target: True
