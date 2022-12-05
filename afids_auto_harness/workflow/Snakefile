@@ -60,15 +60,136 @@ checkpoint split_inputs:
         seed=config.get("seed", 0),
         train_proportion=config.get("train_proportion", 0.7),
     output:
-        **{f"training_{input_ds}": directory(f"output/train/{input_ds}") for input_ds in INPUT_DS_LABELS},
-        **{f"testing_{input_ds}": directory(f"output/test/{input_ds}") for input_ds in INPUT_DS_LABELS},
+        **{
+            f"training_{input_ds}": directory(f"output/train/{input_ds}")
+            for input_ds in INPUT_DS_LABELS
+        },
+        **{
+            f"testing_{input_ds}": directory(f"output/test/{input_ds}")
+            for input_ds in INPUT_DS_LABELS
+        },
     script:
         "scripts/split_data.py"
 
 
-rule merge_datasets:
+rule merge_hcp:
     input:
-        bids(root="output/train/hcp"
+        t1w=expand(
+            bids(
+                root="output/train/hcp",
+                datatype="anat",
+                suffix="T1w.nii.gz",
+                **inputs["hcp"]["t1w"]["t1w"].input_wildcards
+            ),
+            acq=["MP2RAGE"],
+            allow_missing=True,
+        ),
+        groundtruth=expand(
+            bids(
+                root=Path("output/train/hcp") / "derivatives" / "afids_groundtruth",
+                desc="groundtruth",
+                suffix="afids.fcsv",
+                space="T1w",
+                **inputs["hcp"]["t1w"]["t1w"].input_wildcards,
+            ),
+            acq=["MP2RAGE"],
+            allow_missing=True,
+        ),
+    output:
+        t1w=bids(
+            root="output/merged",
+            datatype="anat",
+            suffix="T1w.nii.gz",
+            **inputs["hcp"]["t1w"].subj_wildcards
+        ),
+        groundtruth=bids(
+            root="output/merged/derivatives/afids_groundtruth",
+            desc="groundtruth",
+            suffix="afids.fcsv",
+            space="T1w",
+            **inputs["hcp"]["t1w"].subj_wildcards
+        ),
+    shell:
+        "cp {input.t1w} {output.t1w} && "
+        "cp {input.groundtruth} {output.groundtruth}"
+
+
+rule merge_snsx:
+    input:
+        t1w=expand(
+            bids(
+                root="output/train/snsx",
+                datatype="anat",
+                suffix="T1w.nii.gz",
+                **inputs["snsx"]["t1w"]["t1w"].input_wildcards
+            ),
+            acq=["MP2RAGE"],
+            run=["01"],
+            allow_missing=True,
+        ),
+        groundtruth=expand(
+            bids(
+                root=Path("output/train/snsx") / "derivatives" / "afids_groundtruth",
+                desc="groundtruth",
+                suffix="afids.fcsv",
+                space="T1w",
+                **inputs["snsx"]["t1w"]["t1w"].input_wildcards,
+            ),
+            acq=["MP2RAGE"],
+            run=["01"],
+            allow_missing=True,
+        ),
+    output:
+        t1w=bids(
+            root="output/merged",
+            datatype="anat",
+            suffix="T1w.nii.gz",
+            **inputs["snsx"]["t1w"].subj_wildcards
+        ),
+        groundtruth=bids(
+            root="output/merged/derivatives/afids_groundtruth",
+            desc="groundtruth",
+            suffix="afids.fcsv",
+            space="T1w",
+            **inputs["snsx"]["t1w"].subj_wildcards
+        ),
+    shell:
+        "cp {input.t1w} {output.t1w} && "
+        "cp {input.groundtruth} {output.groundtruth}"
+
+
+rule merge_oasis:
+    input:
+        t1w=bids(
+            root="output/train/oasis",
+            datatype="anat",
+            suffix="T1w.nii.gz",
+            **inputs["oasis"]["t1w"]["t1w"].input_wildcards
+        ),
+        groundtruth=bids(
+            root=Path("output/train/oasis") / "derivatives" / "afids_groundtruth",
+            desc="groundtruth",
+            suffix="afids.fcsv",
+            space="T1w",
+            **inputs["oasis"]["t1w"]["t1w"].input_wildcards,
+        ),
+    output:
+        t1w=bids(
+            root="output/merged",
+            datatype="anat",
+            suffix="T1w.nii.gz",
+            **inputs["oasis"]["t1w"].subj_wildcards
+        ),
+        groundtruth=bids(
+            root="output/merged/derivatives/afids_groundtruth",
+            desc="groundtruth",
+            suffix="afids.fcsv",
+            space="T1w",
+            **inputs["oasis"]["t1w"].subj_wildcards
+        ),
+    shell:
+        "cp {input.t1w} {output.t1w} && "
+        "cp {input.groundtruth} {output.groundtruth}"
 
 
 def subset_inputs(wildcards, output_name):
@@ -86,6 +207,45 @@ def aggregate_input(wildcards, output_name):
     )
 
 
+def aggregate_training(wildcards):
+    split_output = checkpoints.split_inputs.get(**wildcards).output
+    subjects = []
+    for in_ds in INPUT_DS_LABELS:
+        subset_dir = split_output[f"training_{in_ds}"]
+        subset_inputs = generate_inputs(
+            bids_dir=subset_dir,
+            pybids_inputs=config["pybids_inputs"],
+            use_bids_inputs=True,
+        )
+        subjects.extend(subset_inputs["t1w"].input_zip_lists["subject"])
+    return {
+        "groundtruth": expand(
+            bids(
+                root="output/merged/derivatives/afids_groundtruth",
+                desc="groundtruth",
+                suffix="afids.fcsv",
+                space="T1w",
+                subject="{subject}",
+            ),
+            subject=subjects,
+        ),
+        "t1w": expand(
+            bids(
+                root="output/merged",
+                datatype="anat",
+                suffix="T1w.nii.gz",
+                subject="{subject}",
+            ),
+            subject=subjects,
+        ),
+    }
+
+
+rule merge_all:
+    input:
+        unpack(aggregate_training),
+
+
 rule train_model:
     input:
         training_data=partial(aggregate_input, output_name="training_data"),
@@ -96,7 +256,7 @@ rule train_model:
             space="MNI152NLin2009cAsym",
         ),
     params:
-        input_dir="output/train",
+        input_dir="output/merged",
         model_dir="output/models",
     container:
         "docker://tristankk/afids-auto-train:latest"
