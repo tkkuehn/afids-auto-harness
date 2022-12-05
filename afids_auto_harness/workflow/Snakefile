@@ -8,39 +8,67 @@ from snakebids import bids, generate_inputs
 configfile: "config/config.yaml"
 
 
-inputs = generate_inputs(
-    bids_dir=config["bids_dir"],
-    pybids_inputs=config["pybids_inputs"],
-    use_bids_inputs=True,
+INPUT_DS_LABELS = ["hcp", "snsx", "oasis"]
+
+t1w_inputs = partial(
+    generate_inputs, pybids_inputs=config["pybids_inputs"], use_bids_inputs=True
 )
+afids_inputs = partial(
+    generate_inputs, pybids_inputs=config["afids_inputs"], use_bids_inputs=True
+)
+
+inputs = {
+    input_ds: {
+        "afids": afids_inputs(
+            bids_dir=Path(config[f"{input_ds}_dir"])
+            / "derivatives"
+            / "afids_groundtruth"
+        ),
+        "t1w": t1w_inputs(bids_dir=config[f"{input_ds}_dir"]),
+    }
+    for input_ds in INPUT_DS_LABELS
+}
 
 
 checkpoint split_inputs:
     input:
-        input_images=expand(
-            inputs["t1w"].input_path, zip, **inputs["t1w"].input_zip_lists
-        ),
-        ground_truth=expand(
-            bids(
-                root=str(
-                    Path(config["bids_dir"]) / "derivatives" / "afids_groundtruth"
+        **{
+            f"{input_ds}_images": expand(
+                inputs[input_ds]["t1w"]["t1w"].input_path,
+                zip,
+                **inputs[input_ds]["t1w"]["t1w"].input_zip_lists,
+            )
+            for input_ds in INPUT_DS_LABELS
+        },
+        **{
+            f"{input_ds}_groundtruth": expand(
+                bids(
+                    root=Path(config[f"{input_ds}_dir"])
+                    / "derivatives"
+                    / "afids_groundtruth",
+                    desc="groundtruth",
+                    suffix="afids.fcsv",
+                    space="T1w",
+                    **inputs[input_ds]["t1w"]["t1w"].input_wildcards,
                 ),
-                desc="groundtruth",
-                suffix="afids.fcsv",
-                space="T1w",
-                **inputs["t1w"].input_wildcards
-            ),
-            zip,
-            **inputs["t1w"].input_zip_lists
-        ),
+                zip,
+                **inputs[input_ds]["t1w"]["t1w"].input_zip_lists,
+            )
+            for input_ds in INPUT_DS_LABELS
+        },
     params:
         seed=config.get("seed", 0),
         train_proportion=config.get("train_proportion", 0.7),
     output:
-        training_data=directory("output/train"),
-        testing_data=directory("output/test"),
+        **{f"training_{input_ds}": directory(f"output/train/{input_ds}") for input_ds in INPUT_DS_LABELS},
+        **{f"testing_{input_ds}": directory(f"output/test/{input_ds}") for input_ds in INPUT_DS_LABELS},
     script:
         "scripts/split_data.py"
+
+
+rule merge_datasets:
+    input:
+        bids(root="output/train/hcp"
 
 
 def subset_inputs(wildcards, output_name):
@@ -94,6 +122,17 @@ checkpoint apply_model:
         "/opt/afids-auto-apply/run.py {params.test_dir} {params.out_dir} participant --model_dir {params.model_dir} --cores {resources.cores}"
 
 
+def aggregate_fcsvs(wildcards):
+    out_dir = checkpoints.apply_model.get(**wildcards).output["out_dir"]
+    return bids(
+        root=out_dir,
+        datatype="anat",
+        space="MNI152NLin2009cAsym",
+        suffix="afids.fcsv",
+        **inputs["t1w"].input_wildcards
+    )
+
+
 rule afle:
     input:
         ground_truth_fcsv=bids(
@@ -101,21 +140,15 @@ rule afle:
             desc="groundtruth",
             suffix="afids.fcsv",
             space="T1w",
-            **inputs["t1w"].input_wildcards,
+            **inputs["hcp"]["t1w"]["t1w"].input_wildcards,
         ),
-        model_fcsv=bids(
-            root=str(Path("output") / "afids" / "threshold_prob"),
-            datatype="anat",
-            space="MNI152NLin2009cAsym",
-            suffix="afids.fcsv",
-            **inputs["t1w"].input_wildcards,
-        ),
+        model_fcsv=aggregate_fcsvs,
     output:
         afle=bids(
             root=str(Path("output") / "afles"),
             datatype="anat",
             suffix="afles.json",
-            **inputs["t1w"].input_wildcards,
+            **inputs["hcp"]["t1w"]["t1w"].input_wildcards,
         ),
     script:
         "scripts/calc_afle.py"

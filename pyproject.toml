@@ -1,0 +1,27 @@
+[tool.pylint.main]
+additional-builtins = ["snakemake"]
+
+[tool.poetry]
+name = "afids-auto-harness"
+version = "0.1.0"
+description = ""
+authors = ["Tristan Kuehn <tkuehn@uwo.ca>"]
+readme = "README.md"
+packages = [{include = "afids_auto_harness"}]
+
+[tool.poetry.dependencies]
+python = ">=3.8, <3.12"
+snakemake = "^7.18.2"
+snakebids = "^0.7.1"
+scikit-learn = "^1.1.3"
+
+[tool.poetry.group.dev.dependencies]
+pylint = "^2.15.8"
+snakefmt = "^0.7.0"
+black = "^22.10.0"
+yamllint = "^1.28.0"
+yamlfix = "^1.1.1"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
