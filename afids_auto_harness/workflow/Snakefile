@@ -8,6 +8,14 @@ from snakebids import bids, generate_inputs
 configfile: "config/config.yaml"
 
 
+wildcard_constraints:
+    acq="[a-zA-Z\d]+",
+    run="[a-zA-Z\d]+",
+    subject="[a-zA-Z\d]+",
+    session="[a-zA-Z\d]+",
+    task="[a-zA-Z\d]+",
+
+
 INPUT_DS_LABELS = ["hcp", "snsx", "oasis"]
 
 t1w_inputs = partial(
@@ -192,21 +200,6 @@ rule merge_oasis:
         "cp {input.groundtruth} {output.groundtruth}"
 
 
-def subset_inputs(wildcards, output_name):
-    split_output = checkpoints.split_inputs.get(**wildcards).output
-    subset_dir = split_output[output_name]
-    return generate_inputs(
-        bids_dir=subset_dir, pybids_inputs=config["pybids_inputs"], use_bids_inputs=True
-    )
-
-
-def aggregate_input(wildcards, output_name):
-    train_inputs = subset_inputs(wildcards, output_name)
-    return expand(
-        train_inputs["t1w"].input_path, zip, **train_inputs["t1w"].input_zip_lists
-    )
-
-
 def aggregate_training(wildcards):
     split_output = checkpoints.split_inputs.get(**wildcards).output
     subjects = []
@@ -241,14 +234,9 @@ def aggregate_training(wildcards):
     }
 
 
-rule merge_all:
-    input:
-        unpack(aggregate_training),
-
-
 rule train_model:
     input:
-        training_data=partial(aggregate_input, output_name="training_data"),
+        unpack(aggregate_training),
     output:
         model=bids(
             root="output/models/auto-afids-train",
@@ -264,16 +252,32 @@ rule train_model:
         "/opt/afids-auto-train/run.py {params.input_dir} {params.model_dir} participant --cores --force-output"
 
 
+def subset_inputs(wildcards, output_name):
+    split_output = checkpoints.split_inputs.get(**wildcards).output
+    subset_dir = split_output[output_name]
+    return generate_inputs(
+        bids_dir=subset_dir, pybids_inputs=config["pybids_inputs"], use_bids_inputs=True
+    )
+
+
+def aggregate_testing(wildcards):
+    output_name = f"testing_{wildcards['ds']}"
+    train_inputs = subset_inputs(wildcards, output_name)
+    return expand(
+        train_inputs["t1w"].input_path, zip, **train_inputs["t1w"].input_zip_lists
+    )
+
+
 checkpoint apply_model:
     input:
-        testing_data=partial(aggregate_input, output_name="testing_data"),
+        testing_data=aggregate_testing,
         model=rules.train_model.output["model"],
     params:
         model_dir="output/models",
-        test_dir="output/test",
-        out_dir="output/afids",
+        test_dir=lambda wildcards: f"output/test/{wildcards['ds']}",
+        out_dir=lambda wildcards: f"output/afids/{wildcards['ds']}",
     output:
-        out_dir=directory("output/afids/threshold_prob"),
+        out_dir=directory("output/afids/{ds}/threshold_prob"),
     container:
         "docker://tristankk/afids-auto-apply:latest"
     resources:
@@ -289,14 +293,14 @@ def aggregate_fcsvs(wildcards):
         datatype="anat",
         space="MNI152NLin2009cAsym",
         suffix="afids.fcsv",
-        **inputs["t1w"].input_wildcards
+        **inputs[wildcards["ds"]]["t1w"]["t1w"].input_wildcards
     )
 
 
-rule afle:
+rule afle_hcp:
     input:
         ground_truth_fcsv=bids(
-            root=str(Path("output") / "test" / "derivatives" / "afids_groundtruth"),
+            root=str(Path("output") / "test" / "{ds}" / "derivatives" / "afids_groundtruth"),
             desc="groundtruth",
             suffix="afids.fcsv",
             space="T1w",
@@ -305,7 +309,7 @@ rule afle:
         model_fcsv=aggregate_fcsvs,
     output:
         afle=bids(
-            root=str(Path("output") / "afles"),
+            root=str(Path("output") / "afles" / "{ds}"),
             datatype="anat",
             suffix="afles.json",
             **inputs["hcp"]["t1w"]["t1w"].input_wildcards,
@@ -314,9 +318,50 @@ rule afle:
         "scripts/calc_afle.py"
 
 
+rule afle_snsx:
+    input:
+        ground_truth_fcsv=bids(
+            root=str(Path("output") / "test" / "{ds}" / "derivatives" / "afids_groundtruth"),
+            desc="groundtruth",
+            suffix="afids.fcsv",
+            space="T1w",
+            **inputs["snsx"]["t1w"]["t1w"].input_wildcards,
+        ),
+        model_fcsv=aggregate_fcsvs,
+    output:
+        afle=bids(
+            root=str(Path("output") / "afles" / "{ds}"),
+            datatype="anat",
+            suffix="afles.json",
+            **inputs["snsx"]["t1w"]["t1w"].input_wildcards,
+        ),
+    script:
+        "scripts/calc_afle.py"
+
+
+rule afle_oasis:
+    input:
+        ground_truth_fcsv=bids(
+            root=str(Path("output") / "test" / "{ds}" / "derivatives" / "afids_groundtruth"),
+            desc="groundtruth",
+            suffix="afids.fcsv",
+            space="T1w",
+            **inputs["oasis"]["t1w"]["t1w"].input_wildcards,
+        ),
+        model_fcsv=aggregate_fcsvs,
+    output:
+        afle=bids(
+            root=str(Path("output") / "afles" / "{ds}"),
+            datatype="anat",
+            suffix="afles.json",
+            **inputs["oasis"]["t1w"]["t1w"].input_wildcards,
+        ),
+    script:
+        "scripts/calc_afle.py"
+
+
 def aggregate_all_inputs(wildcards):
-    test_inputs = subset_inputs(wildcards, "testing_data")
-    return expand(rules.afle.output["afle"], zip, **test_inputs["t1w"].input_zip_lists)
+    return expand(expand(rules.afle_hcp.output["afle"], ds="hcp", allow_missing=True), zip, **subset_inputs(wildcards, "testing_hcp")["t1w"].input_zip_lists) + expand(expand(rules.afle_snsx.output["afle"], ds="snsx", allow_missing=True), zip, **subset_inputs(wildcards, "testing_snsx")["t1w"].input_zip_lists) + expand(expand(rules.afle_oasis.output["afle"], ds="oasis", allow_missing=True), zip, **subset_inputs(wildcards, "testing_oasis")["t1w"].input_zip_lists)
 
 
 rule all:
