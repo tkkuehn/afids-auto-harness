@@ -261,7 +261,7 @@ rule train_model:
     output:
         model=bids(
             root="output/models/patchsize-{patchsize}_ntrees-{ntrees}_treedepth-{treedepth}_usexyz-{usexyz}_spheresize-{spheresize}/auto-afids-train",
-            suffix="patchsize-{patchsize}_ntrees-{ntrees}_treedepth-{treedepth}_usexyz-{usexyz}_spheresize-{spheresize}_model.rf",
+            suffix="model.rf",
             space="MNI152NLin2009cAsym",
         ),
     params:
