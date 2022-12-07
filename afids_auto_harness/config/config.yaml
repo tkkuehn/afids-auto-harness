@@ -1,7 +1,7 @@
 ---
-hcp_dir: /home/tkuehn/Code/ds004253
+hcp_dir: /home/tkwork/Code/hcp
 snsx_dir: /home/tkuehn/Code/SNSX
-oasis_dir: /home/tkuehn/Code/OASIS
+oasis_dir: /home/tkwork/Code/oasis
 output_dir: /home/tkuehn/Code/afids-auto-output
 
 # this configures the pybids grabber - create an entry for each type of input 
