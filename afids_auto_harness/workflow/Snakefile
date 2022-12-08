@@ -2,7 +2,7 @@ from functools import partial
 from pathlib import Path
 import random
 
-from snakebids import bids, generate_inputs
+from snakebids import bids, generate_inputs, filter_list
 
 
 configfile: "config/config.yaml"
@@ -32,6 +32,7 @@ inputs = {
     "t1w": t1w_inputs(bids_dir=config["lhscpd_dir"]),
 }
 
+print(inputs["t1w"]["t1w"].input_zip_lists)
 
 rule write_config:
     params:
@@ -53,13 +54,60 @@ rule write_config:
         'echo "{params.spheresize}" >> {output}'
 
 
+rule copy_subject:
+    input:
+        t1w=inputs["t1w"]["t1w"].input_path,
+        afids=inputs["afids"]["afids"].input_path
+    output:
+        t1w=bids(
+            root="output/{cohort}",
+            suffix="T1w.nii.gz",
+            datatype="anat",
+            **inputs["t1w"]["t1w"].input_wildcards
+        ),
+        afids=bids(
+            root="output/{cohort}/derivatives/afids_groundtruth",
+            suffix="afids.fcsv",
+            space="T1w",
+            desc="groundtruth",
+            **inputs["afids"]["afids"].input_wildcards
+        )
+    shell:
+        "cp {input.t1w} {output.t1w} && "
+        "cp {input.afids} {output.afids}"
+
+
+rule copy_train:
+    input:
+        t1w=expand(
+            expand(rules.copy_subject.output.t1w, cohort="train", allow_missing=True),
+            zip,
+            **filter_list(inputs["t1w"]["t1w"].input_zip_lists, {"subject": config["train_subjects"]}),
+        ),
+        afids=expand(
+            expand(rules.copy_subject.output.afids, cohort="train", allow_missing=True),
+            zip,
+            **filter_list(inputs["afids"]["afids"].input_zip_lists, {"subject": config["train_subjects"]})
+        )
+
+
+rule copy_test:
+    input:
+        t1w=expand(
+            expand(rules.copy_subject.output.t1w, cohort="test", allow_missing=True),
+            zip,
+            **filter_list(inputs["t1w"]["t1w"].input_zip_lists, {"subject": config["test_subjects"]}),
+        ),
+        afids=expand(
+            expand(rules.copy_subject.output.afids, cohort="test", allow_missing=True),
+            zip,
+            **filter_list(inputs["afids"]["afids"].input_zip_lists, {"subject": config["test_subjects"]})
+        )
+
+
 rule train_model:
     input:
-        expand(
-            inputs["t1w"]["train"].input_path,
-            zip,
-            **inputs["t1w"]["train"].input_zip_lists,
-        ),
+        rules.copy_train.input.t1w,
         configfile=rules.write_config.output.configfile,
     output:
         model=bids(
@@ -68,25 +116,21 @@ rule train_model:
             space="MNI152NLin2009cAsym",
         ),
     params:
-        input_dir=config["oasis_dir"],
+        input_dir="output/train",
         model_dir="output/models/patchsize-{patchsize}_ntrees-{ntrees}_treedepth-{treedepth}_usexyz-{usexyz}_spheresize-{spheresize}",
     container:
-        "docker://tristankk/afids-auto-train:latest"
+        config["containers"]["afids_auto_train"]
     shell:
         "/opt/afids-auto-train/run.py {params.input_dir} {params.model_dir} participant --cores --force-output --configfile {input.configfile}"
 
 
 rule apply_model:
     input:
-        testing_data=expand(
-            inputs["t1w"]["test"].input_path,
-            zip,
-            **inputs["t1w"]["test"].input_zip_lists,
-        ),
+        testing_data=rules.copy_test.input.t1w,
         model=rules.train_model.output["model"],
     params:
         model_dir="output/models/patchsize-{patchsize}_ntrees-{ntrees}_treedepth-{treedepth}_usexyz-{usexyz}_spheresize-{spheresize}",
-        test_dir=config["hcp_dir"],
+        test_dir="output/test",
         out_dir="output/afids/patchsize-{patchsize}_ntrees-{ntrees}_treedepth-{treedepth}_usexyz-{usexyz}_spheresize-{spheresize}",
     output:
         out_fcsvs=expand(
@@ -95,35 +139,35 @@ rule apply_model:
                 datatype="anat",
                 space="MNI152NLin2009cAsym",
                 suffix="afids.fcsv",
-                **inputs["t1w"]["test"].input_wildcards,
+                **inputs["t1w"]["t1w"].input_wildcards,
             ),
             zip,
-            **inputs["t1w"]["test"].input_zip_lists,
+            **filter_list(inputs["t1w"]["t1w"].input_zip_lists, {"subject": config["test_subjects"]}),
             allow_missing=True,
         ),
     container:
-        "docker://tristankk/afids-auto-apply:latest"
+        config["containers"]["afids_auto_apply"]
     resources:
         cores=workflow.cores,
     shell:
-        "/opt/afids-auto-apply/run.py {params.test_dir} {params.out_dir} participant --model_dir {params.model_dir} --cores {resources.cores}"
+        "/opt/afids-auto-apply/run.py {params.test_dir} {params.out_dir} participant --model_dir {params.model_dir} --cores {resources.cores} --force-output"
 
 
 rule afle:
     input:
         ground_truth_fcsv=bids(
-            root=str(Path(config["lhscpd_dir"]) / "derivatives" / "afids_groundtruth"),
+            root=str(Path("output/test") / "derivatives" / "afids_groundtruth"),
             desc="groundtruth",
             suffix="afids.fcsv",
             space="T1w",
-            **inputs["afids"]["test"].input_wildcards,
+            **inputs["afids"]["afids"].input_wildcards,
         ),
         model_fcsv=bids(
             root="output/afids/patchsize-{patchsize}_ntrees-{ntrees}_treedepth-{treedepth}_usexyz-{usexyz}_spheresize-{spheresize}/threshold_prob",
             datatype="anat",
             space="MNI152NLin2009cAsym",
             suffix="afids.fcsv",
-            **inputs["t1w"]["test"].input_wildcards
+            **inputs["t1w"]["t1w"].input_wildcards
         ),
     output:
         afle=bids(
@@ -134,7 +178,7 @@ rule afle:
             ),
             datatype="anat",
             suffix="afles.json",
-            **inputs["t1w"]["test"].input_wildcards,
+            **inputs["t1w"]["t1w"].input_wildcards,
         ),
     script:
         "scripts/calc_afle.py"
@@ -152,7 +196,7 @@ def aggregate_all_inputs(wildcards):
             allow_missing=True,
         ),
         zip,
-        **inputs["t1w"]["test"].input_zip_lists
+        **filter_list(inputs["t1w"]["t1w"].input_zip_lists, {"subject": config["test_subjects"]}),
     )
 
 

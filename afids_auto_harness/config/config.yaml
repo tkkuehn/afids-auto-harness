@@ -1,149 +1,79 @@
 ---
-lhscpd_dir: /home/tkuehn/Code/SNSX
-output_dir: /home/tkuehn/Code/afids-auto-output
+lhscpd_dir: /scratch/tkuehn/lhscpd
 
 # this configures the pybids grabber - create an entry for each type of input 
 # you want to grab indexed by name of input dictionary for each input is 
 # passed directly to pybids get()
 # https://bids-standard.github.io/pybids/generated/bids.layout.BIDSLayout.html#bids.layout.BIDSLayout.get
 pybids_inputs:
-  test:
+  t1w:
     filters:
       suffix: T1w
       extension: .nii.gz
       datatype: anat
-      subject:
-        - 106
-        - 113
-        - 122
-        - 141
-        - 163
+      run: 01
     wildcards:
+      - subject
       - session
       - acquisition
       - task
-      - run
-  train:
-    filters:
-      suffix: T1w
-      extension: .nii.gz
-      datatype: anat
-      subject:
-        - 087
-        - 093
-        - 103
-        - 107
-        - 115
-        - 116
-        - 118
-        - 120
-        - 124
-        - 125
-        - 126
-        - 127
-        - 128
-        - 131
-        - 132
-        - 133
-        - 135
-        - 136
-        - 138
-        - 139
-        - 145
-        - 146
-        - 147
-        - 148
-        - 149
-        - 150
-        - 151
-        - 152
-        - 153
-        - 156
-        - 157
-        - 158
-        - 161
-        - 162
-        - 168
-        - 106
-        - 113
-        - 122
-        - 141
-        - 163
-    wildcards:
-      - session
-      - acquisition
-      - task
-      - run
 afids_inputs:
-  test:
+  afids:
     filters:
       suffix: afids
       extension: .fcsv
       space: T1w
       desc: groundtruth
-      subject:
-        - 106
-        - 113
-        - 122
-        - 141
-        - 163
     wildcards:
+      - subject
       - session
       - acquisition
       - task
       - run
-  train:
-    filters:
-      suffix: afids
-      extension: .fcsv
-      space: T1w
-      desc: groundtruth
-      subject:
-        - 087
-        - 093
-        - 103
-        - 107
-        - 115
-        - 116
-        - 118
-        - 120
-        - 124
-        - 125
-        - 126
-        - 127
-        - 128
-        - 131
-        - 132
-        - 133
-        - 135
-        - 136
-        - 138
-        - 139
-        - 145
-        - 146
-        - 147
-        - 148
-        - 149
-        - 150
-        - 151
-        - 152
-        - 153
-        - 156
-        - 157
-        - 158
-        - 161
-        - 162
-        - 168
-        - 106
-        - 113
-        - 122
-        - 141
-        - 163
-    wildcards:
-      - session
-      - acquisition
-      - task
-      - run
+
+train_subjects:
+ - '087'
+ - '093'
+ - '103'
+ - '107'
+ - '115'
+ - '116'
+ - '118'
+ - '120'
+ - '124'
+ - '125'
+ - '126'
+ - '127'
+ - '128'
+ - '131'
+ - '132'
+ - '133'
+ - '135'
+ - '136'
+ - '138'
+ - '139'
+ - '145'
+ - '146'
+ - '147'
+ - '148'
+ - '149'
+ - '150'
+ - '151'
+ - '152'
+ - '153'
+ - '156'
+ - '157'
+ - '158'
+ - '161'
+ - '162'
+ - '168'
+
+test_subjects:
+  - '106'
+  - '113'
+  - '122'
+  - '141'
+  - '163'
 
 train_proportion: 0.7
 
@@ -166,3 +96,7 @@ spheresize:
   - 2
   - 3
   - 4
+
+containers:
+  afids_auto_train: /scratch/tkuehn/afids-auto-train.sif
+  afids_auto_apply: /scratch/tkuehn/afids-auto-apply.sif
