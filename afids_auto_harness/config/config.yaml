@@ -1,8 +1,6 @@
 ---
-hcp_dir: /home/tkwork/Code/hcp
-snsx_dir: /home/tkuehn/Code/SNSX
-oasis_dir: /home/tkwork/Code/oasis
-output_dir: /home/tkuehn/Code/afids-auto-output
+hcp_dir: /scratch/tkuehn/ds004253
+oasis_dir: /scratch/tkuehn/OASIS
 
 # this configures the pybids grabber - create an entry for each type of input 
 # you want to grab indexed by name of input dictionary for each input is 
@@ -56,3 +54,7 @@ spheresize:
   - 2
   - 3
   - 4
+
+containers:
+  afids_auto_train: /scratch/tkuehn/afids-auto-train.sif
+  afids_auto_apply: /scratch/tkuehn/afids-auto-apply.sif
