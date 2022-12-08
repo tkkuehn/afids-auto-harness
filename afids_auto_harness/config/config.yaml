@@ -1,7 +1,5 @@
 ---
-hcp_dir: /home/tkwork/Code/hcp
-snsx_dir: /home/tkuehn/Code/SNSX
-oasis_dir: /home/tkwork/Code/oasis
+lhscpd_dir: /home/tkuehn/Code/SNSX
 output_dir: /home/tkuehn/Code/afids-auto-output
 
 # this configures the pybids grabber - create an entry for each type of input 
@@ -9,27 +7,139 @@ output_dir: /home/tkuehn/Code/afids-auto-output
 # passed directly to pybids get()
 # https://bids-standard.github.io/pybids/generated/bids.layout.BIDSLayout.html#bids.layout.BIDSLayout.get
 pybids_inputs:
-  t1w:
+  test:
     filters:
       suffix: T1w
       extension: .nii.gz
       datatype: anat
+      subject:
+        - 106
+        - 113
+        - 122
+        - 141
+        - 163
     wildcards:
-      - subject
       - session
       - acquisition
       - task
       - run
-
+  train:
+    filters:
+      suffix: T1w
+      extension: .nii.gz
+      datatype: anat
+      subject:
+        - 087
+        - 093
+        - 103
+        - 107
+        - 115
+        - 116
+        - 118
+        - 120
+        - 124
+        - 125
+        - 126
+        - 127
+        - 128
+        - 131
+        - 132
+        - 133
+        - 135
+        - 136
+        - 138
+        - 139
+        - 145
+        - 146
+        - 147
+        - 148
+        - 149
+        - 150
+        - 151
+        - 152
+        - 153
+        - 156
+        - 157
+        - 158
+        - 161
+        - 162
+        - 168
+        - 106
+        - 113
+        - 122
+        - 141
+        - 163
+    wildcards:
+      - session
+      - acquisition
+      - task
+      - run
 afids_inputs:
-  afids:
+  test:
     filters:
       suffix: afids
       extension: .fcsv
       space: T1w
       desc: groundtruth
+      subject:
+        - 106
+        - 113
+        - 122
+        - 141
+        - 163
     wildcards:
-      - subject
+      - session
+      - acquisition
+      - task
+      - run
+  train:
+    filters:
+      suffix: afids
+      extension: .fcsv
+      space: T1w
+      desc: groundtruth
+      subject:
+        - 087
+        - 093
+        - 103
+        - 107
+        - 115
+        - 116
+        - 118
+        - 120
+        - 124
+        - 125
+        - 126
+        - 127
+        - 128
+        - 131
+        - 132
+        - 133
+        - 135
+        - 136
+        - 138
+        - 139
+        - 145
+        - 146
+        - 147
+        - 148
+        - 149
+        - 150
+        - 151
+        - 152
+        - 153
+        - 156
+        - 157
+        - 158
+        - 161
+        - 162
+        - 168
+        - 106
+        - 113
+        - 122
+        - 141
+        - 163
+    wildcards:
       - session
       - acquisition
       - task

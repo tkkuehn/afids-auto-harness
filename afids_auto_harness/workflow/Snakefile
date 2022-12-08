@@ -26,15 +26,10 @@ afids_inputs = partial(
 )
 
 inputs = {
-    input_ds: {
-        "afids": afids_inputs(
-            bids_dir=Path(config[f"{input_ds}_dir"])
-            / "derivatives"
-            / "afids_groundtruth"
-        ),
-        "t1w": t1w_inputs(bids_dir=config[f"{input_ds}_dir"]),
-    }
-    for input_ds in INPUT_DS_LABELS
+    "afids": afids_inputs(
+        bids_dir=Path(config["lhscpd_dir"]) / "derivatives" / "afids_groundtruth"
+    ),
+    "t1w": t1w_inputs(bids_dir=config["lhscpd_dir"]),
 }
 
 
@@ -61,9 +56,9 @@ rule write_config:
 rule train_model:
     input:
         expand(
-            inputs["oasis"]["t1w"]["t1w"].input_path,
+            inputs["t1w"]["train"].input_path,
             zip,
-            **inputs["oasis"]["t1w"]["t1w"].input_zip_lists,
+            **inputs["t1w"]["train"].input_zip_lists,
         ),
         configfile=rules.write_config.output.configfile,
     output:
@@ -84,9 +79,9 @@ rule train_model:
 rule apply_model:
     input:
         testing_data=expand(
-            inputs["hcp"]["t1w"]["t1w"].input_path,
+            inputs["t1w"]["test"].input_path,
             zip,
-            **inputs["hcp"]["t1w"]["t1w"].input_zip_lists,
+            **inputs["t1w"]["test"].input_zip_lists,
         ),
         model=rules.train_model.output["model"],
     params:
@@ -100,10 +95,10 @@ rule apply_model:
                 datatype="anat",
                 space="MNI152NLin2009cAsym",
                 suffix="afids.fcsv",
-                **inputs["hcp"]["t1w"]["t1w"].input_wildcards,
+                **inputs["t1w"]["test"].input_wildcards,
             ),
             zip,
-            **inputs["hcp"]["t1w"]["t1w"].input_zip_lists,
+            **inputs["t1w"]["test"].input_zip_lists,
             allow_missing=True,
         ),
     container:
@@ -117,18 +112,18 @@ rule apply_model:
 rule afle:
     input:
         ground_truth_fcsv=bids(
-            root=str(Path(config["hcp_dir"]) / "derivatives" / "afids_groundtruth"),
+            root=str(Path(config["lhscpd_dir"]) / "derivatives" / "afids_groundtruth"),
             desc="groundtruth",
             suffix="afids.fcsv",
             space="T1w",
-            **inputs["hcp"]["afids"]["afids"].input_wildcards,
+            **inputs["afids"]["test"].input_wildcards,
         ),
         model_fcsv=bids(
             root="output/afids/patchsize-{patchsize}_ntrees-{ntrees}_treedepth-{treedepth}_usexyz-{usexyz}_spheresize-{spheresize}/threshold_prob",
             datatype="anat",
             space="MNI152NLin2009cAsym",
             suffix="afids.fcsv",
-            **inputs["hcp"]["t1w"]["t1w"].input_wildcards
+            **inputs["t1w"]["test"].input_wildcards
         ),
     output:
         afle=bids(
@@ -139,7 +134,7 @@ rule afle:
             ),
             datatype="anat",
             suffix="afles.json",
-            **inputs["hcp"]["t1w"]["t1w"].input_wildcards,
+            **inputs["t1w"]["test"].input_wildcards,
         ),
     script:
         "scripts/calc_afle.py"
@@ -157,7 +152,7 @@ def aggregate_all_inputs(wildcards):
             allow_missing=True,
         ),
         zip,
-        **inputs["hcp"]["t1w"]["t1w"].input_zip_lists
+        **inputs["t1w"]["test"].input_zip_lists
     )
 
 
