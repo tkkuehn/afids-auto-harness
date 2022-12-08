@@ -32,7 +32,10 @@ inputs = {
     "t1w": t1w_inputs(bids_dir=config["lhscpd_dir"]),
 }
 
-print(inputs["t1w"]["t1w"].input_zip_lists)
+
+localrules:
+    write_config,
+
 
 rule write_config:
     params:
@@ -54,10 +57,14 @@ rule write_config:
         'echo "{params.spheresize}" >> {output}'
 
 
+localrules:
+    copy_subject,
+
+
 rule copy_subject:
     input:
         t1w=inputs["t1w"]["t1w"].input_path,
-        afids=inputs["afids"]["afids"].input_path
+        afids=inputs["afids"]["afids"].input_path,
     output:
         t1w=bids(
             root="output/{cohort}",
@@ -71,10 +78,14 @@ rule copy_subject:
             space="T1w",
             desc="groundtruth",
             **inputs["afids"]["afids"].input_wildcards
-        )
+        ),
     shell:
         "cp {input.t1w} {output.t1w} && "
         "cp {input.afids} {output.afids}"
+
+
+localrules:
+    copy_train,
 
 
 rule copy_train:
@@ -82,13 +93,25 @@ rule copy_train:
         t1w=expand(
             expand(rules.copy_subject.output.t1w, cohort="train", allow_missing=True),
             zip,
-            **filter_list(inputs["t1w"]["t1w"].input_zip_lists, {"subject": config["train_subjects"]}),
+            **filter_list(
+                inputs["t1w"]["t1w"].input_zip_lists,
+                {"subject": config["train_subjects"]},
+            ),
         ),
         afids=expand(
-            expand(rules.copy_subject.output.afids, cohort="train", allow_missing=True),
+            expand(
+                rules.copy_subject.output.afids, cohort="train", allow_missing=True
+            ),
             zip,
-            **filter_list(inputs["afids"]["afids"].input_zip_lists, {"subject": config["train_subjects"]})
-        )
+            **filter_list(
+                inputs["afids"]["afids"].input_zip_lists,
+                {"subject": config["train_subjects"]},
+            )
+        ),
+
+
+localrules:
+    copy_test,
 
 
 rule copy_test:
@@ -96,13 +119,19 @@ rule copy_test:
         t1w=expand(
             expand(rules.copy_subject.output.t1w, cohort="test", allow_missing=True),
             zip,
-            **filter_list(inputs["t1w"]["t1w"].input_zip_lists, {"subject": config["test_subjects"]}),
+            **filter_list(
+                inputs["t1w"]["t1w"].input_zip_lists,
+                {"subject": config["test_subjects"]},
+            ),
         ),
         afids=expand(
             expand(rules.copy_subject.output.afids, cohort="test", allow_missing=True),
             zip,
-            **filter_list(inputs["afids"]["afids"].input_zip_lists, {"subject": config["test_subjects"]})
-        )
+            **filter_list(
+                inputs["afids"]["afids"].input_zip_lists,
+                {"subject": config["test_subjects"]},
+            )
+        ),
 
 
 rule train_model:
@@ -118,6 +147,10 @@ rule train_model:
     params:
         input_dir="output/train",
         model_dir="output/models/patchsize-{patchsize}_ntrees-{ntrees}_treedepth-{treedepth}_usexyz-{usexyz}_spheresize-{spheresize}",
+    resources:
+        mem_mb=64000,
+        time=179,
+    threads: 1
     container:
         config["containers"]["afids_auto_train"]
     shell:
@@ -142,15 +175,24 @@ rule apply_model:
                 **inputs["t1w"]["t1w"].input_wildcards,
             ),
             zip,
-            **filter_list(inputs["t1w"]["t1w"].input_zip_lists, {"subject": config["test_subjects"]}),
+            **filter_list(
+                inputs["t1w"]["t1w"].input_zip_lists,
+                {"subject": config["test_subjects"]},
+            ),
             allow_missing=True,
         ),
     container:
         config["containers"]["afids_auto_apply"]
     resources:
-        cores=workflow.cores,
+        mem_mb=64000,
+        time=1439,
+    threads: 1
     shell:
-        "/opt/afids-auto-apply/run.py {params.test_dir} {params.out_dir} participant --model_dir {params.model_dir} --cores {resources.cores} --force-output"
+        "/opt/afids-auto-apply/run.py {params.test_dir} {params.out_dir} participant --model_dir {params.model_dir} --cores {threads} --force-output"
+
+
+localrules:
+    afle,
 
 
 rule afle:
@@ -196,8 +238,14 @@ def aggregate_all_inputs(wildcards):
             allow_missing=True,
         ),
         zip,
-        **filter_list(inputs["t1w"]["t1w"].input_zip_lists, {"subject": config["test_subjects"]}),
+        **filter_list(
+            inputs["t1w"]["t1w"].input_zip_lists, {"subject": config["test_subjects"]}
+        ),
     )
+
+
+localrules:
+    all,
 
 
 rule all:
