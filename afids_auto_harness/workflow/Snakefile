@@ -268,7 +268,7 @@ rule train_model:
         input_dir="output/merged",
         model_dir="output/models/patchsize-{patchsize}_ntrees-{ntrees}_treedepth-{treedepth}_usexyz-{usexyz}_spheresize-{spheresize}",
     container:
-        "docker://tristankk/afids-auto-train:latest"
+        config["containers"]["afids_auto_train"]
     shell:
         "/opt/afids-auto-train/run.py {params.input_dir} {params.model_dir} participant --cores --force-output --configfile {input.configfile}"
 
@@ -302,7 +302,7 @@ checkpoint apply_model:
             "output/afids/patchsize-{patchsize}_ntrees-{ntrees}_treedepth-{treedepth}_usexyz-{usexyz}_spheresize-{spheresize}/{ds}/threshold_prob"
         ),
     container:
-        "docker://tristankk/afids-auto-apply:latest"
+        config["containers"]["afids_auto_apply"]
     resources:
         cores=workflow.cores,
     shell:
