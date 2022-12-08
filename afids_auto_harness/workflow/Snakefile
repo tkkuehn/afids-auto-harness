@@ -38,6 +38,10 @@ inputs = {
 }
 
 
+localrules:
+    split_inputs,
+
+
 checkpoint split_inputs:
     input:
         **{
@@ -78,6 +82,10 @@ checkpoint split_inputs:
         },
     script:
         "scripts/split_data.py"
+
+
+localrules:
+    merge_hcp,
 
 
 rule merge_hcp:
@@ -122,6 +130,10 @@ rule merge_hcp:
         "cp {input.groundtruth} {output.groundtruth}"
 
 
+localrules:
+    merge_snsx,
+
+
 rule merge_snsx:
     input:
         t1w=expand(
@@ -164,6 +176,10 @@ rule merge_snsx:
     shell:
         "cp {input.t1w} {output.t1w} && "
         "cp {input.groundtruth} {output.groundtruth}"
+
+
+localrules:
+    merge_oasis,
 
 
 rule merge_oasis:
@@ -234,6 +250,10 @@ def aggregate_training(wildcards):
     }
 
 
+localrules:
+    write_config,
+
+
 rule write_config:
     params:
         patchsize="    patch: {patchsize}",
@@ -269,6 +289,10 @@ rule train_model:
         model_dir="output/models/patchsize-{patchsize}_ntrees-{ntrees}_treedepth-{treedepth}_usexyz-{usexyz}_spheresize-{spheresize}",
     container:
         config["containers"]["afids_auto_train"]
+    resources:
+        mem_mb=128000,
+        time=180,
+    threads: 1
     shell:
         "/opt/afids-auto-train/run.py {params.input_dir} {params.model_dir} participant --cores --force-output --configfile {input.configfile}"
 
@@ -304,9 +328,11 @@ checkpoint apply_model:
     container:
         config["containers"]["afids_auto_apply"]
     resources:
-        cores=workflow.cores,
+        time=4319,
+        mem_mb=128000,
+    threads: 1
     shell:
-        "/opt/afids-auto-apply/run.py {params.test_dir} {params.out_dir} participant --model_dir {params.model_dir} --cores {resources.cores}"
+        "/opt/afids-auto-apply/run.py {params.test_dir} {params.out_dir} participant --model_dir {params.model_dir} --cores {threads}"
 
 
 def aggregate_fcsvs(wildcards):
@@ -318,6 +344,10 @@ def aggregate_fcsvs(wildcards):
         suffix="afids.fcsv",
         **inputs[wildcards["ds"]]["t1w"]["t1w"].input_wildcards
     )
+
+
+localrules:
+    afle_hcp,
 
 
 rule afle_hcp:
@@ -348,6 +378,10 @@ rule afle_hcp:
         "scripts/calc_afle.py"
 
 
+localrules:
+    afle_snsx,
+
+
 rule afle_snsx:
     input:
         ground_truth_fcsv=bids(
@@ -374,6 +408,10 @@ rule afle_snsx:
         ),
     script:
         "scripts/calc_afle.py"
+
+
+localrules:
+    afle_oasis,
 
 
 rule afle_oasis:
@@ -449,6 +487,10 @@ def aggregate_all_inputs(wildcards):
             **subset_inputs(wildcards, "testing_oasis")["t1w"].input_zip_lists
         )
     )
+
+
+localrules:
+    all,
 
 
 rule all:
