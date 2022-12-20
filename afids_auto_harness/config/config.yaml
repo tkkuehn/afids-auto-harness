@@ -53,8 +53,6 @@ usexyz:
   - false
 spheresize:
   - 2
-  - 3
-  - 4
 
 containers:
   afids_auto_train: /scratch/tkuehn/afids-auto-train.sif
