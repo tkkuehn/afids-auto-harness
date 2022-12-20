@@ -38,6 +38,7 @@ inputs = {
 }
 
 
+localrules: write_config
 rule write_config:
     params:
         patchsize="    patch: {patchsize}",
@@ -75,10 +76,14 @@ rule train_model:
     params:
         input_dir=config["oasis_dir"],
         model_dir="output/models/patchsize-{patchsize}_ntrees-{ntrees}_treedepth-{treedepth}_usexyz-{usexyz}_spheresize-{spheresize}",
+    resources:
+        mem_mb=32000,
+        time=179,
+    threads: 1
     container:
         config["containers"]["afids_auto_train"]
     shell:
-        "/opt/afids-auto-train/run.py {params.input_dir} {params.model_dir} participant --cores --force-output --configfile {input.configfile}"
+        "/scratch/tkuehn/afids-auto/afids-auto-train/run.py {params.input_dir} {params.model_dir} participant --configfile {input.configfile} --resources local_cores={threads} --profile cc-slurm --jobs 6 --force-output"
 
 
 rule apply_model:
@@ -109,11 +114,14 @@ rule apply_model:
     container:
         config["containers"]["afids_auto_apply"]
     resources:
-        cores=workflow.cores,
+        mem_mb=32000,
+        time=4319,
+    threads: 1
     shell:
-        "/opt/afids-auto-apply/run.py --force-output {params.test_dir} {params.out_dir} participant --model_dir {params.model_dir} --cores {resources.cores}"
+        "/scratch/tkuehn/afids-auto/afids-auto-apply/run.py {params.test_dir} {params.out_dir} participant --model_dir {params.model_dir} --profile cc-slurm --jobs 6 --resources local_cores={threads} --force-output --keep-incomplete"
 
 
+localrules: afle
 rule afle:
     input:
         ground_truth_fcsv=bids(
@@ -145,23 +153,33 @@ rule afle:
         "scripts/calc_afle.py"
 
 
-def aggregate_all_inputs(wildcards):
-    return expand(
+localrules: summarize_afles
+rule summarize_afles:
+    input:
+        afles=expand(rules.afle.output["afle"], zip, **inputs["hcp"]["t1w"]["t1w"].input_zip_lists, allow_missing=True),
+    output:
+        table=bids(
+            root=str(
+                Path("output")
+                / "afles"
+                / "patchsize-{patchsize}_ntrees-{ntrees}_treedepth-{treedepth}_usexyz-{usexyz}_spheresize-{spheresize}"
+            ),
+            datatype="anat",
+            suffix="aflesummary.tsv",
+        )
+    script:
+        "scripts/summarize_afles.py"
+
+
+localrules: all
+rule all:
+    input:
         expand(
-            rules.afle.output["afle"],
+            rules.summarize_afles.output["table"],
             patchsize=config["patch_size"],
             ntrees=config["ntrees"],
             treedepth=config["treedepth"],
             usexyz=config["usexyz"],
             spheresize=config["spheresize"],
-            allow_missing=True,
-        ),
-        zip,
-        **inputs["hcp"]["t1w"]["t1w"].input_zip_lists
-    )
-
-
-rule all:
-    input:
-        aggregate_all_inputs,
+        )
     default_target: True
