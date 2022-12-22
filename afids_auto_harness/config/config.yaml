@@ -37,20 +37,13 @@ afids_inputs:
 train_proportion: 0.7
 
 patch_size:
-  - 3x3x3x0
   - 6x6x6x0
-  - 9x9x9x0
 ntrees:
-  - 50
-  - 250
-  - 500
+  - 100
 treedepth:
-  - 30
-  - 40
   - 50
 usexyz:
   - true
-  - false
 spheresize:
   - 2
 

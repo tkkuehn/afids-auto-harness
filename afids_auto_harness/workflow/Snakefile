@@ -290,11 +290,11 @@ rule train_model:
     container:
         config["containers"]["afids_auto_train"]
     resources:
-        mem_mb=128000,
+        mem_mb=64000,
         time=180,
     threads: 1
     shell:
-        "/opt/afids-auto-train/run.py {params.input_dir} {params.model_dir} participant --cores --force-output --configfile {input.configfile}"
+        "/scratch/tkuehn/afids-auto/afids-auto-train/run.py {params.input_dir} {params.model_dir} participant --force-output --configfile {input.configfile} --resources local_cores={threads} --profile cc-slurm --jobs 6 --force-output"
 
 
 def subset_inputs(wildcards, output_name):
@@ -329,11 +329,10 @@ checkpoint apply_model:
         config["containers"]["afids_auto_apply"]
     resources:
         time=4319,
-        mem_mb=128000,
+        mem_mb=64000,
     threads: 1
     shell:
-        "/opt/afids-auto-apply/run.py {params.test_dir} {params.out_dir} participant --model_dir {params.model_dir} --cores {threads}"
-
+        "/scratch/tkuehn/afids-auto/afids-auto-apply/run.py {params.test_dir} {params.out_dir} participant --model_dir {params.model_dir} --profile cc-slurm --jobs 6 --resources local_cores={threads} --force-output --keep-incomplete"
 
 def aggregate_fcsvs(wildcards):
     out_dir = checkpoints.apply_model.get(**wildcards).output["out_dir"]
